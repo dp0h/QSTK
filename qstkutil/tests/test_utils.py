@@ -12,33 +12,29 @@ Created on May 14, 2012
 
 '''
 
-# Python imports
 import unittest
+from test import test_support
 
-# 3rd party imports
+import datetime as dt
+import qstkutil.qsdateutil as du
 
-# QSTK imports
+class TestDateUtils(unittest.TestCase):
+    """
+    Test case for qsdateutil
+    """
 
+    def test_NYSEdates(self):
+        du.GTS_DATES = None # reset cache
 
+        res = du.getNYSEdays(startday = dt.datetime(2013, 4, 26), endday = dt.datetime(2013, 5, 6))
+	self.assertEquals(7, len(res))
 
-class Test(unittest.TestCase):
+    def test_LSEdates(self):
+        du.GTS_DATES = None # reset cache
 
-
-    def setUp(self):
-        pass
-
-
-    def tearDown(self):
-        pass
-
-
-    def test_import(self):
-        # Silly example to test current error in loading utils
-        import qstkutil.utils as utils
-        self.assertTrue(True)
-        
-
+        res = du.getStockExchangeDays(stock_exchange = "LSE", startday = dt.datetime(2013, 4, 26), endday = dt.datetime(2013, 5, 6))
+	self.assertEquals(6, len(res))
 
 if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
-    unittest.main()
+	test_support.run_unittest(TestDateUtils)
+    
