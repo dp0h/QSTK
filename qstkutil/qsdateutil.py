@@ -22,22 +22,26 @@ import os
 import pandas as pd
 
 
-def _cache_dates():
-    ''' Caches dates '''
+def _load_dates(stock_exchange):
     try:
-        filename = os.environ['QS'] + "/qstkutil/NYSE_dates.txt"
+        filename = os.environ['QS'] + "/qstkutil/%s_dates.txt" % stock_exchange
     except KeyError:
         print "Please be sure to set the value for QS in config.sh or\n"
         print "in local.sh and then \'source local.sh\'.\n"
 
-    datestxt = np.loadtxt(filename,dtype=str)
-    dates = []
-    for i in datestxt:
-        dates.append(dt.datetime.strptime(i,"%m/%d/%Y"))
-    return pd.TimeSeries(index=dates, data=dates)
+    return np.loadtxt(filename,dtype=str)
 
-GTS_DATES = _cache_dates()
+GTS_DATES = None
 
+def _precache_dates(stock_exchange):
+    ''' Caches dates '''
+    global GTS_DATES 
+    if GTS_DATES is None:
+        datestxt = _load_dates(stock_exchange)
+        dates = []
+        for i in datestxt:
+            dates.append(dt.datetime.strptime(i,"%m/%d/%Y"))
+        GTS_DATES = pd.TimeSeries(index=dates, data=dates)
 
 
 def getMonthNames():
@@ -118,9 +122,10 @@ def getLastOptionClose(day, trade_days):
         day= day - dt.timedelta(days=1)
     return(getNextOptionClose(day, trade_days))
 
+def getStockExchangeOffset(stock_exchange, mark, offset):
+    ''' Returns specified stock exchange date offset by number of days '''
+    _precache_dates(stock_exchange)
 
-def getNYSEoffset(mark, offset):
-    ''' Returns NYSE date offset by number of days '''
     mark = mark.replace(hour=0, minute=0, second=0, microsecond=0)
     
     i = GTS_DATES.index.searchsorted(mark, side='right')
@@ -134,6 +139,31 @@ def getNYSEoffset(mark, offset):
 
     return ret
 
+def getNYSEoffset(mark, offset):
+    ''' Returns NYSE date offset by number of days '''
+    return getStockExchangeOffset("NYSE", mark, offset)
+
+def getStockExchangeDays(stock_exchange, startday, endday, timeofday = dt.timedelta(0)):
+    """
+    @summary: Create a list of timestamps between startday and endday (inclusive)
+    that correspond to the days there was trading at the specified stock 
+    exchange. 
+    @param startday: First timestamp to consider (inclusive)
+    @param endday: Last day to consider (inclusive)
+    @return list: of timestamps between startday and endday on which specified 
+    stock exchange traded
+    @rtype datetime
+    """
+    _precache_dates(stock_exchange)
+
+    start = startday - timeofday
+    end = endday - timeofday
+
+    dates = GTS_DATES[start:end]
+
+    ret = [x + timeofday for x in dates]
+
+    return(ret)
 
 def getNYSEdays(startday = dt.datetime(1964,7,5), endday = dt.datetime(2020,12,31),
     timeofday = dt.timedelta(0)):
@@ -149,14 +179,27 @@ def getNYSEdays(startday = dt.datetime(1964,7,5), endday = dt.datetime(2020,12,3
     @return list: of timestamps between startday and endday on which NYSE traded
     @rtype datetime
     """
-    start = startday - timeofday
-    end = endday - timeofday
+    return getStockExchangeDays("NYSE", startday, endday, timeofday)
 
-    dates = GTS_DATES[start:end]
-
-    ret = [x + timeofday for x in dates]
-
-    return(ret)
+def getNextNStockExchangeDays(stock_exchange, startday, days, timeofday):
+    """
+    @summary: Create a list of timestamps from startday that is days days long
+    that correspond to the days there was trading at specified stock exchange. 
+    This function depends on the file used in getNYSEdays and assumes the 
+    dates within are in order.
+    @param startday: First timestamp to consider (inclusive)
+    @param days: Number of timestamps to return
+    @return list: List of timestamps starting at startday on which specified 
+    stock exchange traded
+    @rtype datetime
+    """
+    datestxt = _load_dates(stock_exchange)
+    dates=[]
+    for i in datestxt:
+        if(len(dates)<days):
+            if((dt.datetime.strptime(i,"%m/%d/%Y")+timeofday)>=startday):
+                dates.append(dt.datetime.strptime(i,"%m/%d/%Y")+timeofday)
+    return(dates)
 
 def getNextNNYSEdays(startday, days, timeofday):
     """
@@ -169,21 +212,9 @@ def getNextNNYSEdays(startday, days, timeofday):
     @return list: List of timestamps starting at startday on which NYSE traded
     @rtype datetime
     """
-    try:
-        filename = os.environ['QS'] + "/qstkutil/NYSE_dates.txt"
-    except KeyError:
-        print "Please be sure to set the value for QS in config.sh or\n"
-        print "in local.sh and then \'source local.sh\'.\n"
+    return getNextNStockExchangeDays("NYSE", startday, days, timeofday)
 
-    datestxt = np.loadtxt(filename,dtype=str)
-    dates=[]
-    for i in datestxt:
-        if(len(dates)<days):
-            if((dt.datetime.strptime(i,"%m/%d/%Y")+timeofday)>=startday):
-                dates.append(dt.datetime.strptime(i,"%m/%d/%Y")+timeofday)
-    return(dates)
-
-def getPrevNNYSEday(startday, timeofday):
+def getPrevNStockExcangeDay(stock_exchange, startday, timeofday):
     """
     @summary: This function returns the last valid trading day before the start
     day, or returns the start day if it is a valid trading day. This function
@@ -191,16 +222,11 @@ def getPrevNNYSEday(startday, timeofday):
     in order.
     @param startday: First timestamp to consider (inclusive)
     @param days: Number of timestamps to return
-    @return list: List of timestamps starting at startday on which NYSE traded
+    @return list: List of timestamps starting at startday on which specified 
+    stock exchange traded
     @rtype datetime
     """
-    try:
-        filename = os.environ['QS'] + "/qstkutil/NYSE_dates.txt"
-    except KeyError:
-        print "Please be sure to set the value for QS in config.sh or\n"
-        print "in local.sh and then \'source local.sh\'.\n"
-
-    datestxt = np.loadtxt(filename,dtype=str)
+    datestxt = _load_dates(stock_exchange)
 
     #''' Set return to first day '''
     dtReturn = dt.datetime.strptime( datestxt[0],"%m/%d/%Y")+timeofday
@@ -216,6 +242,19 @@ def getPrevNNYSEday(startday, timeofday):
         dtReturn = dtNext + timeofday
 
     return(dtReturn)
+
+def getPrevNNYSEday(startday, timeofday):
+    """
+    @summary: This function returns the last valid trading day before the start
+    day, or returns the start day if it is a valid trading day. This function
+    depends on the file used in getNYSEdays and assumes the dates within are
+    in order.
+    @param startday: First timestamp to consider (inclusive)
+    @param days: Number of timestamps to return
+    @return list: List of timestamps starting at startday on which NYSE traded
+    @rtype datetime
+    """
+    return getPrevNStockExcangeDay("NYSE", startday, timeofday)
 
 def ymd2epoch(year, month, day):
     """
