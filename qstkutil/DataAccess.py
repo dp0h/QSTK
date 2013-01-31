@@ -420,7 +420,7 @@ class DataAccess(object):
         
         #get_data_hardread ends
 
-    def get_data (self, ts_list, symbol_list, data_item, verbose=False, bIncDelist=False):
+    def get_data (self, ts_list, symbol_list, data_item, verbose=False, bIncDelist=False, save_cache=True):
         '''
         Read data into a DataFrame, but check to see if it is in a cache first.
         @param ts_list: List of timestamps for which the data values are needed. Timestamps must be sorted.
@@ -508,9 +508,10 @@ class DataAccess(object):
                 print "end hardread"
                 print "saving to cache"
             try:
-                cachefile = open(cachefilename,"wb")
-                pkl.dump(retval, cachefile, -1)
-                os.chmod(cachefilename,0666)
+		if save_cache:	
+			cachefile = open(cachefilename,"wb")
+			pkl.dump(retval, cachefile, -1)
+			os.chmod(cachefilename,0666)
             except IOError:
                 print "error writing cache: " + cachefilename
             if verbose:
